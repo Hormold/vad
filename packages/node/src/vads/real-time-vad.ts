@@ -1,12 +1,13 @@
-import * as vad from "../"
+import { NonRealTimeVADOptions } from "../_common"
+import * as vad from "./non-real-time-vad"
 import { EventEmitter } from "events"
 
-export interface RealTimeVADOptions {
-  sampleRate?: number
-  minBufferDuration?: number
-  maxBufferDuration?: number
-  overlapDuration?: number
-  silenceThreshold?: number
+export interface RealTimeVADOptions extends NonRealTimeVADOptions {
+  sampleRate: number
+  minBufferDuration: number
+  maxBufferDuration: number
+  overlapDuration: number
+  silenceThreshold: number
 }
 
 export interface SpeechSegmentStart {
@@ -24,7 +25,7 @@ export interface SpeechSegmentEnd {
 }
 
 export class RealTimeVAD extends EventEmitter {
-  private sampleRateHertz: number
+  private sampleRate: number
   private minBufferSize: number
   private maxBufferSize: number
   private overlapDuration: number
@@ -35,12 +36,13 @@ export class RealTimeVAD extends EventEmitter {
   private silenceThreshold: number
   private lastSpeechEnd: number
   private currentTime: number
+  private options: Partial<RealTimeVADOptions>
 
-  constructor(options: RealTimeVADOptions = {}) {
+  constructor(options: Partial<RealTimeVADOptions> = {}) {
     super()
-    this.sampleRateHertz = options.sampleRate || 16000
-    this.minBufferSize = this.sampleRateHertz * (options.minBufferDuration || 1)
-    this.maxBufferSize = this.sampleRateHertz * (options.maxBufferDuration || 5)
+    this.sampleRate = options.sampleRate || 16000
+    this.minBufferSize = this.sampleRate * (options.minBufferDuration || 1)
+    this.maxBufferSize = this.sampleRate * (options.maxBufferDuration || 5)
     this.overlapDuration = options.overlapDuration || 0.1
     this.audioBuffer = new Float32Array(0)
     this.vadInstance = null
@@ -49,10 +51,11 @@ export class RealTimeVAD extends EventEmitter {
     this.silenceThreshold = options.silenceThreshold || 0.5 // seconds
     this.lastSpeechEnd = 0
     this.currentTime = 0
+    this.options = options
   }
 
   async init(): Promise<void> {
-    this.vadInstance = await vad.NonRealTimeVAD.new()
+    this.vadInstance = await vad.NonRealTimeVAD.new(this.options)
   }
 
   async processAudio(audioChunk: Float32Array | Buffer): Promise<void> {
@@ -73,7 +76,7 @@ export class RealTimeVAD extends EventEmitter {
     }
 
     this.audioBuffer = Float32Array.from([...this.audioBuffer, ...newAudioData])
-    this.currentTime += newAudioData.length / this.sampleRateHertz
+    this.currentTime += newAudioData.length / this.sampleRate
 
     if (this.audioBuffer.length > this.maxBufferSize) {
       this.audioBuffer = this.audioBuffer.slice(-this.maxBufferSize)
@@ -87,7 +90,7 @@ export class RealTimeVAD extends EventEmitter {
       try {
         const vadResult = await this.vadInstance!.run(
           this.audioBuffer,
-          this.sampleRateHertz
+          this.sampleRate
         )
 
         let hasSpeech = false
@@ -99,12 +102,12 @@ export class RealTimeVAD extends EventEmitter {
             hasSpeech = true
             const startTime =
               this.currentTime -
-              this.audioBuffer.length / this.sampleRateHertz +
-              segment.start / this.sampleRateHertz
+              this.audioBuffer.length / this.sampleRate +
+              segment.start / this.sampleRate
             const endTime =
               this.currentTime -
-              this.audioBuffer.length / this.sampleRateHertz +
-              segment.end / this.sampleRateHertz
+              this.audioBuffer.length / this.sampleRate +
+              segment.end / this.sampleRate
 
             if (!this.isSpeechOngoing) {
               this.isSpeechOngoing = true
@@ -132,7 +135,7 @@ export class RealTimeVAD extends EventEmitter {
         }
 
         const overlapSize = Math.floor(
-          this.overlapDuration * this.sampleRateHertz
+          this.overlapDuration * this.sampleRate
         )
         this.audioBuffer = this.audioBuffer.slice(-overlapSize)
       } catch (error) {
