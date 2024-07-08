@@ -54,6 +54,12 @@ export class RealTimeVAD extends EventEmitter {
     this.options = options
   }
 
+  static async new(options: Partial<RealTimeVADOptions> = {}): Promise<RealTimeVAD> {
+    const instance = new RealTimeVAD(options)
+    await instance.init()
+    return instance
+  }
+
   async init(): Promise<void> {
     this.vadInstance = await vad.NonRealTimeVAD.new(this.options)
   }
